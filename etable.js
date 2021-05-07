@@ -31,8 +31,8 @@ module.exports = function (RED) {
         var configAsJson = JSON.stringify(config);
         var mid = (dark) ? "_midnight" : "";
         var html = String.raw`
-                <link href='ui-etable/css/tabulator`+mid+`.min.css' rel='stylesheet' type='text/css'>
-                <script type='text/javascript' src='ui-etable/js/tabulator.js'></script>
+                <link href='ui-etable/css/tabulator_site.css' rel='stylesheet' type='text/css'>
+                <script type='text/javascript' src='ui-etable/js/tabulator.min.js'></script>
                 <div id='ui_etable-{{$id}}'></div>
                 <input type='hidden' ng-init='init(` + configAsJson + `)'>
             `;
@@ -46,7 +46,6 @@ module.exports = function (RED) {
             RED.nodes.createNode(this, config);
             if (checkConfig(node, config)) {
                 var ui = RED.require('node-red-dashboard')(RED);
-
                 var luma = 255;
                 if (ui.hasOwnProperty("getTheme") && (ui.getTheme() !== undefined)) {
                     var rgb = parseInt(ui.getTheme()["page-sidebar-backgroundColor"].value.substring(1), 16);   // convert rrggbb to decimal
@@ -58,6 +57,7 @@ module.exports = function (RED) {
                 delete config.payload;
                 delete config.payloadType;
                 config.options = JSON.parse(config.options);
+
                 var html = HTML(config,(luma < 128));
 
                 done = ui.addWidget({
@@ -70,19 +70,58 @@ module.exports = function (RED) {
                     group: config.group,
                     forwardInputMessages: false,
                     beforeEmit: function (msg, value) {
-                        return {
-                            msg: {
-                                payload: value,
-                                config: msg.config
-                            }
-                        };
+                        let ret = {msg: {payload: value} };
+                        if( msg.hasOwnProperty("configJson") )
+                        {
+                            ret.msg.configJson = msg.configJson;
+                        }
+                        else if (  msg.hasOwnProperty("config") )
+                        {
+                            ret.msg.config = msg.config;
+                        }
+                        return ret;
                     },
                     beforeSend: function (msg, orig) {
                         if (orig) { return orig.msg; }
                     },
                     initController: function ($scope, events) {
+                        var FuncSplit = function(func)
+                        {
+                            let str = func.toString();
+                            let parts = str.match(/^\s*function[^(]*\(([^)]*)\)([\s\S]+)/);
+                            if (!parts || (parts.length!=3))
+                            {
+                                node.warn('FuncSplit: Function could not be parsed: '+str);
+                                return;
+                            }
+                            let name = parts[0];
+                            let params = parts[1].trim().split(/\s*,\s*/);
+                            let bodyRaw = parts[2];
+                            let body = bodyRaw.substring( bodyRaw.indexOf("{")+1, bodyRaw.lastIndexOf("}") );
+                            return [name,params,body];
+                        }
+
+                        var DOMHandlerWithScope = function(event,func)
+                        {
+                            // Note: 'func' should not mix all text qualifiers (" ' `)
+                            let parts = FuncSplit(func);
+                            if(!parts) return '';
+                            let body=parts[2];
+                            let quotes=["`","'",'"'];
+                            let q="`";
+                            for(let i=0;i<quotes.length;i++)
+                            {
+                                let quote = quotes[i];
+                                if ( !body.includes(quote) ) { q=quote; break; }
+                            }
+                            let params=parts[1]||[];
+                            if(!Array.isArray(params)) params=[params];
+                            return " "+event+"="+q+"(function("+params.join(",")+"){"+body+"})(this,angular.element(this).scope())"+q+" ";
+                        }
+
                         $scope.inited = false;
                         $scope.tabledata = [];
+                        $scope.DOMHandlerWithScope = DOMHandlerWithScope;
                         var tablediv;
                         var createTable = function(basediv, tabledata, columndata, options, outputs) {
                             var y = (columndata.length === 0) ? 25 : 32;
@@ -94,14 +133,16 @@ module.exports = function (RED) {
                             }
                             var opts = Object.assign(opts1,options);
                             if (outputs > 0) {
-                                opts.cellClick  = function(e,cell) {
+                                /*
+                                opts.cellClick  = function anonymous(e,cell) {
                                     $scope.send({topic:cell.getField(),callback:"cellClick",payload:cell.getData(),options:opts});
                                 };
                                 opts.cellEdited = function(cell) {
                                     $scope.send({topic:cell.getField(),callback:"cellEdited",payload:cell.getData(),options:opts});
                                 };
+                                */
                             }
-                            var table = new Tabulator(basediv, opts);
+                            $scope.table = new Tabulator(basediv, opts);
                         };
                         $scope.init = function (config) {
                             $scope.config = config;
@@ -116,9 +157,25 @@ module.exports = function (RED) {
                             }, 40);
                         };
                         $scope.$watch('msg', function (msg) {
+                            if(!msg) return;
                             var columns = $scope.config.columns;
                             var options = $scope.config.options;
-                            if(msg && msg.hasOwnProperty("config")){
+                            if ( msg.hasOwnProperty("configJson") ) 
+                            {
+                                var funcGetter = function(key, data) 
+                                    {
+                                        if(Array.isArray(data) && data[0] === 'window.Function')
+                                        {
+                                            return new (Function.bind.apply(Function, [Function].concat(data[1], [data[2]])));
+                                        }
+                                        return data;
+                                    };
+
+                                msg.config = JSON.parse(msg.configJson,funcGetter);
+                                console.log(msg.config);
+                            }
+                            if(msg.hasOwnProperty("config"))
+                            {
                                 if(msg.config.options){
                                     options = msg.config.options;
                                 }
@@ -126,12 +183,19 @@ module.exports = function (RED) {
                                     columns = msg.config.columns;
                                 }
                             }
-                            if (msg && msg.hasOwnProperty("payload") && Array.isArray(msg.payload)) {
-                                if ($scope.inited == false) {
-                                    $scope.tabledata = msg.payload;
-                                    return;
+                            if (msg.hasOwnProperty("payload")) {
+                                if ( (msg.payload==="getData") )
+                                {
+                                    let m = {topic: "getData", payload:$scope.table.getData()};
+                                    $scope.send(m);
                                 }
-                                createTable(tablediv,msg.payload,columns,options,$scope.config.outputs);
+                                if ( Array.isArray(msg.payload) ) {
+                                    if ($scope.inited == false) {
+                                        $scope.tabledata = msg.payload;
+                                        return;
+                                    }
+                                    createTable(tablediv,msg.payload,columns,options,$scope.config.outputs);
+                                }
                             }
                         });
                     }
@@ -152,7 +216,8 @@ module.exports = function (RED) {
     var fullPath = path.join(RED.settings.httpNodeRoot, uipath, '/ui-etable/*').replace(/\\/g, '/');;
     RED.httpNode.get(fullPath, function (req, res) {
         var options = {
-            root: __dirname + '/lib/',
+            //root: __dirname + '/lib/',
+            root: __dirname + '/node_modules/tabulator-tables/dist',
             dotfiles: 'deny'
         };
         res.sendFile(req.params[0], options)

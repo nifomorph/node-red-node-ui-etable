@@ -1,6 +1,32 @@
 {
+  "_from": "git+https://github.com/nifomorph/node-red-node-ui-etable.git",
+  "_id": "node-red-node-ui-etable@1.0.1",
+  "_inBundle": false,
+  "_integrity": "",
+  "_location": "/node-red-node-ui-etable",
+  "_phantomChildren": {},
+  "_requested": {
+    "type": "git",
+    "raw": "node-red-node-ui-etable@git+https://github.com/nifomorph/node-red-node-ui-etable.git",
+    "name": "node-red-node-ui-etable",
+    "escapedName": "node-red-node-ui-etable",
+    "rawSpec": "git+https://github.com/nifomorph/node-red-node-ui-etable.git",
+    "saveSpec": "git+https://github.com/nifomorph/node-red-node-ui-etable.git",
+    "fetchSpec": "https://github.com/nifomorph/node-red-node-ui-etable.git",
+    "gitCommittish": null
+  },
+  "_requiredBy": [
+    "/"
+  ],
+  "_resolved": "git+https://github.com/nifomorph/node-red-node-ui-etable.git#56f949f99c7c361483a654cc4643ddb3bd09d801",
+  "_spec": "node-red-node-ui-etable@git+https://github.com/nifomorph/node-red-node-ui-etable.git",
+  "_where": "/Users/nif/.node-red",
+  "bugs": {
+    "url": "https://github.com/Gippsman2017/node-red-node-ui-etable/issues"
+  },
   "bundleDependencies": [],
   "dependencies": {
+    "tabulator-tables": "^4.6.1"
   },
   "deprecated": false,
   "description": "A Node-RED UI Node to create an editable table based on the Tabulator libraries.",
